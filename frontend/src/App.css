@@ -831,12 +831,52 @@ html {
   overflow: hidden;
   max-width: 420px;
   border: 1px solid var(--glass-border);
+  position: relative;
+  background: #111;
 }
 
 .msg-generated-image img {
   width: 100%;
   height: auto;
   display: block;
+}
+
+.generated-image-download {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  background: rgba(12, 12, 14, 0.72);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  backdrop-filter: blur(12px);
+}
+
+.msg-generated-image:hover .generated-image-download,
+.generated-image-download:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.generated-image-download:hover {
+  background: var(--accent);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 18px rgba(242, 139, 58, 0.45);
+}
+
+@media (hover: none) {
+  .generated-image-download {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .msg-toolbar {

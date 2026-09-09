@@ -31,6 +31,7 @@ import {
   Clock,
   MessageSquare,
   Paperclip,
+  Download,
   X,
   Reply,
 } from 'lucide-react';
@@ -68,6 +69,12 @@ const normalizeStoredSessions = (sessionsList) => {
   if (!Array.isArray(sessionsList)) return [];
   return sessionsList.map(normalizeStoredSession);
 };
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || (
+  process.env.NODE_ENV === 'production'
+    ? 'https://ai-chats-5c1s.onrender.com'
+    : 'http://localhost:5000'
+);
 
 const formatFileSize = (bytes = 0) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -484,12 +491,12 @@ How would you like to proceed? I can help you:
         formData.append('message', userMsg.content || 'Explain this image');
         formData.append('image', uploadedImage);
         formData.append('history', JSON.stringify(historyPayload));
-        res = await fetch('http://localhost:5000/api/chat', {
+        res = await fetch(`${API_BASE_URL}/api/chat`, {
           method: 'POST',
           body: formData,
         });
       } else {
-        res = await fetch('http://localhost:5000/api/chat', {
+        res = await fetch(`${API_BASE_URL}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -562,6 +569,36 @@ How would you like to proceed? I can help you:
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const downloadImage = async (imageUrl, messageId) => {
+    if (!imageUrl) return;
+
+    const filename = `fritz-ai-image-${messageId || Date.now()}.png`;
+
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) throw new Error('Image download failed');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      // Remote providers may block CORS; let the browser handle the fallback.
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = filename;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
   };
 
   const formatTime = (date) => {
@@ -970,6 +1007,15 @@ How would you like to proceed? I can help you:
                         {(msg.imageUrl || msg.generatedImage) && (
                           <div className="msg-generated-image">
                             <img src={msg.imageUrl || msg.generatedImage} alt="Generated content" />
+                            <button
+                              className="generated-image-download"
+                              onClick={() => downloadImage(msg.imageUrl || msg.generatedImage, msg.id)}
+                              title="Download image"
+                              aria-label="Download generated image"
+                              type="button"
+                            >
+                              <Download size={16} strokeWidth={2} />
+                            </button>
                           </div>
                         )}
 
