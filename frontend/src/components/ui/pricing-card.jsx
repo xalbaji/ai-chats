@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "./card"
-import { GlareHover } from "../../registry/magicui/glare-hover"
+import { GlareHover } from "./magicui/glare-hover"
 
 export function PricingCard({
   title = "Pro",

@@ -1,4 +1,6 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const path = require("node:path");
+const { buildFileContext } = require("./documentService");
 let OpenAI;
 try {
   ({ OpenAI } = require("openai"));
@@ -58,6 +60,46 @@ const isImageEnhancementRequest = (userMessage = "") => {
     text.includes('enhance the quality') ||
     /\b(enhance|improve|upscale|refine|clean up|fix)\b.*\b(image|photo|picture|shot|quality|resolution)\b/.test(text)
   );
+};
+
+const isFileGenerationRequest = (userMessage = "") => {
+  const text = userMessage.trim().toLowerCase();
+  return /\b(generate|create|write|make|export|save|download)\b[\s\S]*\b(file|document|pdf|csv|json|markdown|txt|xlsx|spreadsheet|report|code file)\b/.test(text)
+    || /\b(file|document)\b[\s\S]*\b(download|attach|export)\b/.test(text);
+};
+
+const getGeneratedFileInfo = (prompt) => {
+  const namedFile = prompt.match(/\b(?:named|called|as)\s+["']?([\w.-]+\.[a-z0-9]+)["']?/i)?.[1];
+  if (namedFile) return { name: namedFile, mimeType: mimeTypeForExtension(path.extname(namedFile)) };
+  if (/\b(csv|spreadsheet|excel|xlsx)\b/i.test(prompt)) return { name: 'nivo-ai-export.csv', mimeType: 'text/csv' };
+  if (/\b(json)\b/i.test(prompt)) return { name: 'nivo-ai-export.json', mimeType: 'application/json' };
+  if (/\b(pdf)\b/i.test(prompt)) return { name: 'nivo-ai-document.txt', mimeType: 'text/plain' };
+  if (/\b(markdown|md)\b/i.test(prompt)) return { name: 'nivo-ai-document.md', mimeType: 'text/markdown' };
+  return { name: 'nivo-ai-document.txt', mimeType: 'text/plain' };
+};
+
+const mimeTypeForExtension = (extension = '') => ({
+  '.json': 'application/json', '.csv': 'text/csv', '.md': 'text/markdown', '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.py': 'text/x-python', '.pdf': 'application/pdf',
+}[extension.toLowerCase()] || 'text/plain');
+
+const cleanGeneratedContent = (content = '') => {
+  const fenced = content.match(/^```[^\n]*\n([\s\S]*?)\n```$/);
+  return (fenced ? fenced[1] : content).trim();
+};
+
+const generateFileWithGemini = async (prompt, history = []) => {
+  const file = getGeneratedFileInfo(prompt);
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "your_gemini_api_key_here") {
+    return { type: 'file', reply: `I prepared ${file.name}.`, generatedFile: { ...file, content: `NivoAi file\n\nRequest: ${prompt}\n` } };
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: DEFAULT_MODELS[0] });
+  const historyText = history.slice(-6).map((item) => `${item.role}: ${item.content}`).join('\n');
+  const result = await model.generateContent(`Create the requested ${file.name}. Return only the file contents, with no explanation and no markdown fences.\n\nRequest: ${prompt}\nRecent context:\n${historyText}`);
+  const content = cleanGeneratedContent((await result.response).text());
+  return { type: 'file', reply: `I created ${file.name}.`, generatedFile: { ...file, content } };
 };
 
 const analyzeUploadedImage = async (imageFile, promptText = '') => {
@@ -188,8 +230,17 @@ const generateEnhancedImage = async (imageFile, prompt, history = []) => {
 
 const generateResponse = async (userMessage, imageFile = null, history = []) => {
   const promptText = (userMessage || "").trim();
+  const isImageFile = Boolean(imageFile?.mimetype?.startsWith('image/'));
   const isImagePrompt = !imageFile && isImageGenerationRequest(promptText);
-  const isEnhancementPrompt = !!imageFile && isImageEnhancementRequest(promptText);
+  const isEnhancementPrompt = isImageFile && isImageEnhancementRequest(promptText);
+
+  if (!imageFile && isFileGenerationRequest(promptText)) {
+    try {
+      return await generateFileWithGemini(promptText, history);
+    } catch (error) {
+      console.error('File generation failed:', error?.message || error);
+    }
+  }
 
   if (imageFile && isEnhancementPrompt) {
     const enhancedImage = await generateEnhancedImage(imageFile, promptText, history);
@@ -211,7 +262,7 @@ const generateResponse = async (userMessage, imageFile = null, history = []) => 
     };
   }
 
-  if (imageFile) {
+  if (isImageFile) {
     const visionResult = await analyzeUploadedImage(imageFile, promptText);
     if (visionResult) {
       return visionResult;
@@ -252,6 +303,21 @@ const generateResponse = async (userMessage, imageFile = null, history = []) => 
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const candidateModels = DEFAULT_MODELS;
+  let fileContext = null;
+  if (imageFile && !isImageFile) {
+    try {
+      fileContext = await buildFileContext(imageFile);
+    } catch (error) {
+      console.error('Document extraction failed:', error?.message || error);
+    }
+    if (!fileContext) {
+      return {
+        type: 'text',
+        reply: `I received ${imageFile.originalname || 'that file'}, but I could not extract readable content from it. Please try a PDF, DOCX, spreadsheet, text, JSON, CSV, Markdown, or source-code file.`,
+        uploadedFileName: imageFile.originalname || 'uploaded-file',
+      };
+    }
+  }
 
   let formattedHistory = history
     .filter((msg) => msg && typeof msg.content === "string" && msg.content.trim().length > 0)
@@ -272,7 +338,8 @@ const generateResponse = async (userMessage, imageFile = null, history = []) => 
     try {
       const model = genAI.getGenerativeModel({ model: candidateModels[i] });
       const chat = model.startChat({ history: formattedHistory });
-      const result = await chat.sendMessage(promptText || "Hello");
+      const modelPrompt = fileContext ? `${fileContext}\n\nUser request: ${promptText || 'Summarize this file.'}` : (promptText || "Hello");
+      const result = await chat.sendMessage(modelPrompt);
       const responseText = (await result.response).text();
 
       if (responseText?.trim()) {
@@ -291,4 +358,4 @@ const generateResponse = async (userMessage, imageFile = null, history = []) => 
   };
 };
 
-module.exports = { generateResponse, isImageGenerationRequest, isImageEnhancementRequest };
+module.exports = { generateResponse, isImageGenerationRequest, isImageEnhancementRequest, isFileGenerationRequest };

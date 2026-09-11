@@ -8,7 +8,7 @@ jest.mock('react-markdown', () => ({ children }) => <div>{children}</div>);
 jest.mock('remark-gfm', () => () => {});
 jest.mock('remark-math', () => () => {});
 jest.mock('rehype-katex', () => () => {});
-jest.mock('./registry/magicui/typing-animation', () => ({ text }) => <span>{text}</span>);
+jest.mock('./components/ui/magicui/typing-animation', () => ({ text }) => <span>{text}</span>);
 
 import App from './App';
 

@@ -3,12 +3,12 @@ const { generateResponse } = require('../services/chatService');
 const handleChat = async (req, res) => {
   try {
     const { message, history } = req.body || {};
-    const file = req.file;
+    const file = req.file || (req.files || [])[0];
 
     if ((!message || message.trim() === '') && !file) {
       return res.status(400).json({
         type: 'text',
-        reply: 'Please type a message or upload an image.',
+        reply: 'Please type a message or upload a file.',
       });
     }
 

@@ -5,11 +5,14 @@ const multer = require('multer');
 
 const { handleChat } = require('../controllers/chatController');
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
 // ⬆️ ADDED: Configured multer memory storage above to store uploaded files in memory buffers.
 
 // POST /api/chat
-router.post('/', upload.single('image'), handleChat);
+router.post('/', upload.any(), handleChat);
 // ⬆️ MODIFIED: Added `upload.single('image')` middleware above to intercept image uploads under the key 'image'.
 
 module.exports = router;

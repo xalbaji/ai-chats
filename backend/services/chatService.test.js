@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isImageGenerationRequest, isImageEnhancementRequest } = require('./chatService');
+const { isImageGenerationRequest, isImageEnhancementRequest, isFileGenerationRequest } = require('./chatService');
 
 test('detects image generation prompts', () => {
   assert.equal(isImageGenerationRequest('Generate an image of a neon city'), true);
@@ -14,4 +14,10 @@ test('detects uploaded image enhancement prompts', () => {
   assert.equal(isImageEnhancementRequest('Enhance the quality of this picture'), true);
   assert.equal(isImageEnhancementRequest('Improve this image'), true);
   assert.equal(isImageEnhancementRequest('Summarize this photo'), false);
+});
+
+test('detects generated file prompts', () => {
+  assert.equal(isFileGenerationRequest('Create a JSON file named tasks.json'), true);
+  assert.equal(isFileGenerationRequest('Generate a downloadable report file'), true);
+  assert.equal(isFileGenerationRequest('Explain this JavaScript function'), false);
 });

@@ -30,8 +30,10 @@ import {
   Share2,
   Clock,
   MessageSquare,
-  Paperclip,
+  CirclePlus,
+  Send,
   Download,
+  FileText,
   X,
   Reply,
 } from 'lucide-react';
@@ -52,10 +54,12 @@ import { Marker, MarkerContent, MarkerIcon } from './components/ui/marker';
 import { Spinner } from './components/ui/spinner';
 import { InputGroup, InputGroupAddon, InputGroupInput } from './components/ui/input-group';
 import { Avatar, AvatarBadge, AvatarFallback } from './components/ui/avatar';
-import { Meteors } from './registry/magicui/meteors';
-import { AnimatedThemeToggler } from './registry/magicui/animated-theme-toggler';
-import { SmoothCursor } from './registry/magicui/smooth-cursor';
-import { TypingAnimation } from './registry/magicui/typing-animation';
+import {
+  AnimatedThemeToggler,
+  Meteors,
+  SmoothCursor,
+  TypingAnimation,
+} from './components/ui/magicui';
 
 const normalizeStoredSession = (session) => ({
   ...session,
@@ -211,9 +215,13 @@ export default function App() {
   };
 
   const handleFileSelect = (file) => {
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file) return;
     setSelectedImage(file);
-    setImagePreview(URL.createObjectURL(file));
+    if (file.type.startsWith('image/')) {
+      setImagePreview(URL.createObjectURL(file));
+    } else {
+      setImagePreview(null);
+    }
   };
 
   const handleImageChange = (e) => {
@@ -427,7 +435,7 @@ How would you like to proceed? I can help you:
 
     const replyInstruction = replyTarget?.content ? text : text;
 
-    const shouldShowDrawing = /(?:generate|create|draw|make|render|design|add|change).*(?:image|photo|picture|poster|portrait|scene|art|illustration|background|bowtie|hat|glasses|shirt)|(?:enhance|improve|upscale|beautify|fix).*?(?:image|photo|picture)/i.test(text) || Boolean(selectedImage);
+    const shouldShowDrawing = /(?:generate|create|draw|make|render|design|add|change).*(?:image|photo|picture|poster|portrait|scene|art|illustration|background|bowtie|hat|glasses|shirt)|(?:enhance|improve|upscale|beautify|fix).*?(?:image|photo|picture)/i.test(text) || Boolean(selectedImage?.type?.startsWith('image/'));
     const shouldWaitForImage = shouldShowDrawing || Boolean(selectedImage) || Boolean(replyTarget?.imageUrl || replyTarget?.generatedImage);
 
     setLoadingMode(shouldShowDrawing ? 'drawing' : 'thinking');
@@ -454,6 +462,8 @@ How would you like to proceed? I can help you:
       role: 'user',
       content: replyInstruction,
       image: imagePreview || replyTargetImageUrl,
+      fileName: selectedImage?.name || null,
+      fileType: selectedImage?.type || null,
       timestamp: new Date(),
     };
 
@@ -489,7 +499,7 @@ How would you like to proceed? I can help you:
       if (uploadedImage) {
         const formData = new FormData();
         formData.append('message', userMsg.content || 'Explain this image');
-        formData.append('image', uploadedImage);
+        formData.append('file', uploadedImage);
         formData.append('history', JSON.stringify(historyPayload));
         res = await fetch(`${API_BASE_URL}/api/chat`, {
           method: 'POST',
@@ -517,6 +527,7 @@ How would you like to proceed? I can help you:
         content: data.reply,
         generatedImage: imageUrl,
         imageUrl,
+        generatedFile: data.generatedFile || null,
         timestamp: new Date(),
       };
 
@@ -574,7 +585,7 @@ How would you like to proceed? I can help you:
   const downloadImage = async (imageUrl, messageId) => {
     if (!imageUrl) return;
 
-    const filename = `fritz-ai-image-${messageId || Date.now()}.png`;
+    const filename = `nivo-ai-image-${messageId || Date.now()}.png`;
 
     try {
       const response = await fetch(imageUrl);
@@ -599,6 +610,19 @@ How would you like to proceed? I can help you:
       link.click();
       link.remove();
     }
+  };
+
+  const downloadFile = (file, messageId) => {
+    if (!file?.content) return;
+    const blob = new Blob([file.content], { type: file.mimeType || 'text/plain' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = file.name || `nivo-ai-file-${messageId || Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
   };
 
   const formatTime = (date) => {
@@ -802,7 +826,7 @@ How would you like to proceed? I can help you:
         <div className="sidebar-top">
           <div className="brand">
             <div className="brand-badge">
-              <AppLogo size={25} rounded="7px" glow={false} />
+              <img className="sidebar-brand-logo" src="/nivoai-logo-transparent.png" alt="NivoAi" />
             </div>
             <button className="sidebar-collapse-btn" onClick={() => setShowSidebar(false)} aria-label="Close sidebar">
               <PanelLeft size={18} strokeWidth={1.7} />
@@ -911,7 +935,7 @@ How would you like to proceed? I can help you:
               <PanelLeft size={18} strokeWidth={1.7} />
             </button>
             <div className="header-title-group">
-              <div className="header-title">FRITZ AI <ChevronDown size={15} strokeWidth={1.8} /></div>
+              <div className="header-title">NivoAi <ChevronDown size={15} strokeWidth={1.8} /></div>
             </div>
           </div>
           <div className="header-actions">
@@ -989,7 +1013,7 @@ How would you like to proceed? I can help you:
                       {!consecutive && (
                         <div className="msg-meta">
                           <span className="msg-author">
-                            {msg.role === 'user' ? 'Melvin Suan' : 'FRITZ AI'}
+                            {msg.role === 'user' ? 'Melvin Suan' : 'NivoAi'}
                           </span>
                           <span className="msg-time">
                             <Clock size={10} strokeWidth={2} />
@@ -1017,6 +1041,25 @@ How would you like to proceed? I can help you:
                               <Download size={16} strokeWidth={2} />
                             </button>
                           </div>
+                        )}
+
+                        {msg.fileName && !msg.image && (
+                          <div className="msg-file-attachment">
+                            <FileText size={16} aria-hidden="true" />
+                            <span>{msg.fileName}</span>
+                          </div>
+                        )}
+
+                        {msg.generatedFile && (
+                          <button
+                            className="generated-file-download"
+                            onClick={() => downloadFile(msg.generatedFile, msg.id)}
+                            type="button"
+                          >
+                            <FileText size={16} strokeWidth={1.8} />
+                            <span>{msg.generatedFile.name || 'Download generated file'}</span>
+                            <Download size={15} strokeWidth={2} />
+                          </button>
                         )}
 
                         {msg.role === 'assistant' ? (() => {
@@ -1128,7 +1171,7 @@ How would you like to proceed? I can help you:
                         <div className="loading-icon-wrap">
                           <PenLine size={14} strokeWidth={2.2} className="loading-icon" />
                         </div>
-                        <ShimmerDemo>FRITZ AI is drawing…</ShimmerDemo>
+                        <ShimmerDemo>NivoAi is drawing…</ShimmerDemo>
                       </div>
                     ) : (
                       <Marker role="status" className="ai-thinking-marker">
@@ -1182,11 +1225,15 @@ How would you like to proceed? I can help you:
                 </div>
               )}
 
-              {imagePreview && (
+              {selectedImage && (
                 <div className="image-preview-bar">
                   <Attachment className="composer-attachment" orientation="horizontal">
-                    <AttachmentMedia variant="image">
-                      <img src={imagePreview} alt={`Preview of ${selectedImage?.name || 'attached image'}`} />
+                    <AttachmentMedia variant={imagePreview ? 'image' : 'file'}>
+                      {imagePreview ? (
+                        <img src={imagePreview} alt={`Preview of ${selectedImage.name || 'attached image'}`} />
+                      ) : (
+                        <FileText size={20} aria-hidden="true" />
+                      )}
                     </AttachmentMedia>
                     <AttachmentContent>
                       <AttachmentTitle>{selectedImage?.name || 'Attached image'}</AttachmentTitle>
@@ -1208,16 +1255,16 @@ How would you like to proceed? I can help you:
                   type="file"
                   ref={fileInputRef}
                   onChange={handleImageChange}
-                  accept="image/*"
+                  accept="*/*"
                   style={{ display: 'none' }}
                 />
                 <button
                   className="input-attach-btn"
                   onClick={() => fileInputRef.current?.click()}
-                  title="Attach image"
+                  title="Attach a file or document"
                   type="button"
                 >
-                  <Paperclip size={18} />
+                  <CirclePlus size={23} strokeWidth={1.5} />
                 </button>
 
                 <textarea
@@ -1229,7 +1276,7 @@ How would you like to proceed? I can help you:
                   placeholder={
                     isLoading
                       ? 'AI is generating a response...'
-                      : 'Message FRITZ AI...'
+                      : 'Message NivoAi...'
                   }
                   rows={1}
                   disabled={isLoading}
@@ -1241,7 +1288,7 @@ How would you like to proceed? I can help you:
                   disabled={(!input.trim() && !selectedImage) || isLoading}
                   aria-label="Send message"
                 >
-                  <ArrowUpRight size={18} strokeWidth={2} />
+                  <Send size={18} strokeWidth={1.5} />
                 </button>
               </div>
             </div>
