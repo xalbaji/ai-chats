@@ -17,4 +17,9 @@ Create a `.env` file in the `backend/` folder:
 ```env
 PORT=5000
 GEMINI_API_KEY=your_actual_api_key_here
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+MONGODB_DB_NAME=nivo_ai
+JWT_SECRET=replace_with_a_long_random_secret
 ```
+
+Create a MongoDB Atlas cluster, add the deployed backend's IP address (or `0.0.0.0/0` for a quick demo), create a database user, and copy the generated connection string into `MONGODB_URI`. Never commit the URI or database password.

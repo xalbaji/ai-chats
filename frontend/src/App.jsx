@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import './App.css';
 import { AppLogo } from './components/AppLogo';
+import { AuthPanel } from './components/AuthPanel';
 import {
   Attachment,
   AttachmentAction,
@@ -86,7 +87,35 @@ const formatFileSize = (bytes = 0) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const createWelcomeSession = () => ({
+  id: Date.now(),
+  title: 'New chat',
+  messages: [{
+    id: Date.now() + 1,
+    role: 'assistant',
+    content: "Hello! I'm your AI assistant. How can I help you today?",
+    timestamp: new Date(),
+  }],
+});
+
+const createClientId = () => {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `client_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+};
+
 export default function App() {
+  const [auth, setAuth] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('nivo_auth') || 'null'); } catch { return null; }
+  });
+  const [showAuth, setShowAuth] = useState(false);
+  const [clientId] = useState(() => {
+    const stored = localStorage.getItem('nivo_client_id');
+    if (stored) return stored;
+    const created = createClientId();
+    localStorage.setItem('nivo_client_id', created);
+    return created;
+  });
+  const sessionsLoadedRef = useRef(false);
   const [sessions, setSessions] = useState(() => {
     try {
       const saved = localStorage.getItem('chat_sessions');
@@ -191,8 +220,53 @@ export default function App() {
   }, [messages]);
 
   useEffect(() => {
+    if (!sessionsLoadedRef.current) return;
     localStorage.setItem('chat_sessions', JSON.stringify(sessions));
-  }, [sessions]);
+    if (!auth?.token) {
+      localStorage.setItem('chat_sessions', JSON.stringify(sessions));
+      return;
+    }
+    fetch(`${API_BASE_URL}/api/sessions`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth?.token}`,
+      },
+      body: JSON.stringify({ sessions }),
+    }).catch((error) => console.warn('Cloud chat history is unavailable:', error));
+  }, [auth, clientId, sessions]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCloudSessions = async () => {
+      if (!auth?.token) {
+        sessionsLoadedRef.current = true;
+        return;
+      }
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sessions`, {
+          headers: { Authorization: `Bearer ${auth.token}` },
+        });
+        if (!response.ok) throw new Error('Cloud history unavailable');
+        const data = await response.json();
+        if (!cancelled) {
+          const restored = Array.isArray(data.sessions) && data.sessions.length > 0
+            ? normalizeStoredSessions(data.sessions)
+            : [createWelcomeSession()];
+          setSessions(restored);
+          setCurrentSessionId(restored[0].id);
+        }
+      } catch (error) {
+        console.warn('Using local chat history:', error);
+      } finally {
+        if (!cancelled) sessionsLoadedRef.current = true;
+      }
+    };
+
+    loadCloudSessions();
+    return () => { cancelled = true; };
+  }, [auth, clientId]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -201,6 +275,40 @@ export default function App() {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('nivo_auth');
+    const guestSession = {
+      id: Date.now(),
+      title: 'New chat',
+      messages: [{
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: "Hello! I'm your AI assistant. How can I help you today?",
+        timestamp: new Date(),
+      }],
+    };
+    sessionsLoadedRef.current = true;
+    setSessions([guestSession]);
+    setCurrentSessionId(guestSession.id);
+    setAuth(null);
+    setShowAuth(false);
+  };
+
+  const handleAuthenticated = (data) => {
+    localStorage.setItem('nivo_auth', JSON.stringify(data));
+    const welcomeSession = createWelcomeSession();
+    setSessions([welcomeSession]);
+    setCurrentSessionId(welcomeSession.id);
+    sessionsLoadedRef.current = false;
+    setAuth(data);
+    setShowAuth(false);
+  };
+
+  const displayName = auth?.user?.name?.trim() || '';
+  const displayInitials = displayName
+    ? displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+    : 'G';
 
   const handleInputChange = (e) => {
     setInput(e.target.value);
@@ -467,10 +575,18 @@ How would you like to proceed? I can help you:
       timestamp: new Date(),
     };
 
-    const sessionMessages = [...messages, userMsg];
+    const sessionForRequest = currentSession || createWelcomeSession();
+    const responseSessionId = currentSession?.id || sessionForRequest.id;
+    const activeMessages = sessionForRequest.messages || [];
+    const sessionMessages = [...activeMessages, userMsg];
 
-    setSessions((prev) => prev.map((session) => {
-      if (session.id !== currentSessionId) return session;
+    setSessions((prev) => {
+      const hasCurrentSession = prev.some((session) => session.id === responseSessionId);
+      const sourceSessions = hasCurrentSession ? prev : [sessionForRequest];
+      const targetId = responseSessionId;
+      if (!hasCurrentSession) setCurrentSessionId(targetId);
+      return sourceSessions.map((session) => {
+      if (session.id !== targetId) return session;
 
       const title = session.title === 'New chat' ? text.trim().slice(0, 28) : session.title;
       return {
@@ -478,7 +594,8 @@ How would you like to proceed? I can help you:
         title,
         messages: sessionMessages,
       };
-    }));
+      });
+    });
 
     const historyPayload = sessionMessages.map((m) => ({
       role: m.role,
@@ -532,7 +649,7 @@ How would you like to proceed? I can help you:
       };
 
       setSessions((prev) => prev.map((session) => {
-        if (session.id !== currentSessionId) return session;
+        if (session.id !== responseSessionId) return session;
         return {
           ...session,
           messages: [...session.messages, botMsg],
@@ -542,7 +659,7 @@ How would you like to proceed? I can help you:
       await new Promise((resolve) => setTimeout(resolve, 800));
       const simulatedReply = getSimulatedResponse(userMsg.content);
       setSessions((prev) => prev.map((session) => {
-        if (session.id !== currentSessionId) return session;
+        if (session.id !== responseSessionId) return session;
         return {
           ...session,
           messages: [
@@ -916,9 +1033,19 @@ How would you like to proceed? I can help you:
             <span><span className="menu-icon"><CircleHelp size={17} strokeWidth={1.8} /></span>Help</span><ExternalLink size={14} strokeWidth={1.8} />
           </button>
           <div className="login-prompt">
-            <strong>Get responses tailored to you</strong>
-            <p>Log in to get answers based on saved chats, plus create images and upload files.</p>
-            <button className="login-btn"><LogIn size={16} strokeWidth={1.8} />Log in</button>
+            {auth?.token && (
+              <div className="account-summary">
+                <Avatar className="account-avatar"><AvatarFallback>{displayInitials}</AvatarFallback></Avatar>
+                <strong>{displayName}</strong>
+              </div>
+            )}
+            {!auth?.token && <strong>Guest workspace</strong>}
+            <p>{auth?.user?.email || 'Sign in to save chats across devices.'}</p>
+            {auth?.token ? (
+              <button className="login-btn" onClick={handleLogout}><LogIn size={16} strokeWidth={1.8} />Log out</button>
+            ) : (
+              <button className="login-btn" onClick={() => setShowAuth(true)}><LogIn size={16} strokeWidth={1.8} />Log in</button>
+            )}
           </div>
         </div>
       </aside>
@@ -938,10 +1065,6 @@ How would you like to proceed? I can help you:
               <div className="header-title">NivoAi <ChevronDown size={15} strokeWidth={1.8} /></div>
             </div>
           </div>
-          <div className="header-actions">
-            <button className="auth-btn login">Log in</button>
-            <button className="auth-btn signup">Sign up for free</button>
-          </div>
         </header>
 
         {activeView !== 'chat' ? (
@@ -957,7 +1080,7 @@ How would you like to proceed? I can help you:
                   </div>
                   <h1 className="hero-title">
                     How can I help you <br />
-                    <span className="italic-text">today, Melvin?</span>
+                    <span className="italic-text">{displayName ? `today, ${displayName}?` : 'today?'}</span>
                   </h1>
                   <p className="hero-desc">
                     Ask me anything — coding, writing, analysis, brainstorming, or image generation.
@@ -1002,7 +1125,7 @@ How would you like to proceed? I can help you:
                           {msg.role === 'assistant' ? (
                             <AppLogo size={36} rounded="12px" glow={true} />
                           ) : null}
-                          {msg.role === 'user' && <AvatarFallback>MS</AvatarFallback>}
+                          {msg.role === 'user' && <AvatarFallback>{displayInitials}</AvatarFallback>}
                           {msg.role === 'assistant' && <AvatarBadge aria-label="Online" />}
                         </Avatar>
                       </div>
@@ -1013,7 +1136,7 @@ How would you like to proceed? I can help you:
                       {!consecutive && (
                         <div className="msg-meta">
                           <span className="msg-author">
-                            {msg.role === 'user' ? 'Melvin Suan' : 'NivoAi'}
+                            {msg.role === 'user' ? (displayName || 'Guest') : 'NivoAi'}
                           </span>
                           <span className="msg-time">
                             <Clock size={10} strokeWidth={2} />
@@ -1296,6 +1419,7 @@ How would you like to proceed? I can help you:
           </div>
         )}
       </main>
+      {showAuth && <AuthPanel onAuthenticated={handleAuthenticated} onClose={() => setShowAuth(false)} />}
     </div>
   );
 }

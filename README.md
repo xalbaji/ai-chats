@@ -68,7 +68,11 @@ pnpm --version
    ```env
    PORT=5000
    GEMINI_API_KEY=your_actual_api_key_here
+   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+   MONGODB_DB_NAME=nivo_ai
+   JWT_SECRET=replace_with_a_long_random_secret
    ```
+   Chat sessions are stored in MongoDB Atlas when these variables are configured. For a deployed frontend, set `REACT_APP_API_URL` to the public URL of the deployed backend.
 5. Start the backend development server:
    ```bash
    pnpm dev
