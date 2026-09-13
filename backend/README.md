@@ -23,3 +23,5 @@ JWT_SECRET=replace_with_a_long_random_secret
 ```
 
 Create a MongoDB Atlas cluster, add the deployed backend's IP address (or `0.0.0.0/0` for a quick demo), create a database user, and copy the generated connection string into `MONGODB_URI`. Never commit the URI or database password.
+
+For Render, use `pnpm install --frozen-lockfile` as the build command and `pnpm start` as the start command. Add `MONGODB_URI`, `MONGODB_DB_NAME`, `JWT_SECRET`, and `GEMINI_API_KEY` as Render environment variables.

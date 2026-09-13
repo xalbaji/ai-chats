@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: ai-chats-backend
+    env: node
+    rootDir: backend
+    buildCommand: pnpm install --frozen-lockfile
+    startCommand: pnpm start
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: nivo_ai
+      - key: JWT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
