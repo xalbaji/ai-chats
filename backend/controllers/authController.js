@@ -13,6 +13,17 @@ const createToken = (user) => jwt.sign(
 
 const publicUser = (user) => ({ id: user._id.toString(), email: user.email, name: user.name });
 
+const isMongoAuthError = (error) => /bad auth|authentication failed|auth failed/i.test(error?.message || '');
+
+const databaseErrorResponse = (res, error) => {
+  if (isMongoAuthError(error)) {
+    return res.status(503).json({
+      error: 'MongoDB authentication failed. Check the Atlas database username, password, and MONGODB_URI in Render.',
+    });
+  }
+  return res.status(503).json({ error: 'Database is unavailable.' });
+};
+
 const register = async (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 80);
   const email = normalizeEmail(req.body?.email);
@@ -36,7 +47,7 @@ const register = async (req, res) => {
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ error: 'An account with that email already exists.' });
     console.error('Registration failed:', error.message);
-    return res.status(503).json({ error: 'Database is unavailable.' });
+    return databaseErrorResponse(res, error);
   }
 };
 
@@ -53,7 +64,7 @@ const login = async (req, res) => {
     return res.json({ token: createToken(user), user: publicUser(user) });
   } catch (error) {
     console.error('Login failed:', error.message);
-    return res.status(503).json({ error: 'Database is unavailable.' });
+    return databaseErrorResponse(res, error);
   }
 };
 
