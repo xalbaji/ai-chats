@@ -1050,6 +1050,15 @@ How would you like to proceed? I can help you:
         </div>
       </aside>
 
+      {showSidebar && (
+        <button
+          className="mobile-sidebar-backdrop"
+          type="button"
+          onClick={() => setShowSidebar(false)}
+          aria-label="Close navigation"
+        />
+      )}
+
       {/* MAIN CONTENT */}
       <main className="main-content">
         <header className="main-header">
